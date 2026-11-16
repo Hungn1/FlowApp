@@ -1,0 +1,223 @@
+// ApplyFlow data model. SQLite, single user.
+// JSON-ish fields are stored as strings (SQLite has no native JSON in Prisma); see lib/json.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Profile (source of truth) ----------
+
+model Profile {
+  id            String   @id @default("me")
+  name          String   @default("")
+  email         String   @default("")
+  phone         String   @default("")
+  location      String   @default("")
+  headline      String   @default("")
+  linkedin      String   @default("")
+  github        String   @default("")
+  portfolio     String   @default("")
+  otherLinks    String   @default("[]") // JSON string[]
+  rawResumeText String   @default("")
+  isSample      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  experiences    Experience[]
+  skills         Skill[]
+  educations     Education[]
+  certifications Certification[]
+  projects       Project[]
+}
+
+model Experience {
+  id         String  @id @default(cuid())
+  profileId  String
+  profile    Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company    String
+  title      String
+  location   String  @default("")
+  start      String  @default("") // free text like "Jun 2023"
+  end        String  @default("") // "" or "Present"
+  isTechRole Boolean @default(false)
+  bullets    String  @default("[]") // JSON string[]
+  order      Int     @default(0)
+}
+
+model Skill {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  category  String  @default("technical") // tool | technical | soft | design
+  level     String  @default("")
+  order     Int     @default(0)
+}
+
+model Education {
+  id         String  @id @default(cuid())
+  profileId  String
+  profile    Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  school     String
+  degree     String  @default("")
+  field      String  @default("")
+  start      String  @default("")
+  end        String  @default("")
+  coursework String  @default("[]") // JSON string[]
+  order      Int     @default(0)
+}
+
+model Certification {
+  id            String  @id @default(cuid())
+  profileId     String
+  profile       Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name          String
+  issuer        String  @default("")
+  issued        String  @default("")
+  expires       String  @default("")
+  credentialUrl String  @default("")
+  inProgress    Boolean @default(false)
+  order         Int     @default(0)
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  profileId   String
+  profile     Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name        String
+  type        String  @default("personal") // case-study | lab | personal | course
+  description String  @default("")
+  bullets     String  @default("[]") // JSON string[]
+  tools       String  @default("[]") // JSON string[]
+  url         String  @default("")
+  order       Int     @default(0)
+}
+
+// ---------- Tracks ----------
+
+model Track {
+  id        String      @id @default(cuid())
+  name      String
+  slug      String      @unique
+  color     String      @default("#6366f1")
+  summary   String      @default("")
+  emphasis  String      @default("general") // portfolio | certs | customer | general
+  keywords  String      @default("[]") // JSON string[] used for auto-assigning jobs
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+  items     TrackItem[]
+  jobs      Job[]
+}
+
+model TrackItem {
+  id       String  @id @default(cuid())
+  trackId  String
+  track    Track   @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  itemType String // skill | project | experience | cert | education
+  itemId   String
+  order    Int     @default(0)
+  featured Boolean @default(false)
+  hidden   Boolean @default(false)
+
+  @@unique([trackId, itemType, itemId])
+}
+
+// ---------- Jobs and applications ----------
+
+model Job {
+  id                String    @id @default(cuid())
+  trackId           String?
+  track             Track?    @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  title             String
+  company           String
+  location          String    @default("")
+  workMode          String    @default("unknown") // remote | hybrid | onsite | unknown
+  payMin            Int?
+  payMax            Int?
+  payPeriod         String    @default("") // year | hour | ""
+  sourceUrl         String    @default("")
+  rawDescription    String    @default("")
+  minYears          Float?
+  maxYears          Float?
+  requiredDegree    String    @default("")
+  requiredCerts     String    @default("[]") // JSON string[]
+  deadline          DateTime?
+  labeledEntryLevel Boolean   @default(false)
+  entryLevelVerdict String    @default("true") // true | stretch | not
+  entryLevelReasons String    @default("[]") // JSON string[]
+  isSample          Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  requirements       Requirement[]
+  application        Application?
+  materials          Material[]
+  interviewQuestions InterviewQuestion[]
+}
+
+model Requirement {
+  id        String  @id @default(cuid())
+  jobId     String
+  job       Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  text      String
+  kind      String  @default("hard") // hard | nice
+  category  String  @default("skill") // skill | tool | cert | degree | years | other
+  matched   Boolean @default(false)
+  coveredBy String  @default("[]") // JSON [{type,id,label,why}]
+  order     Int     @default(0)
+}
+
+model Application {
+  id             String    @id @default(cuid())
+  jobId          String    @unique
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status         String    @default("Saved") // Saved | Applied | Interviewing | Offer | Rejected
+  boardOrder     Float     @default(0)
+  appliedAt      DateTime?
+  lastResponseAt DateTime?
+  followUpDate   DateTime?
+  nextAction     String    @default("")
+  notes          String    @default("")
+  updatedAt      DateTime  @updatedAt
+  contacts       Contact[]
+}
+
+model Contact {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  name          String
+  role          String      @default("")
+  email         String      @default("")
+  linkedin      String      @default("")
+  notes         String      @default("")
+}
+
+model Material {
+  id              String   @id @default(cuid())
+  jobId           String
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  kind            String // resume | coverLetter
+  content         String   @default("") // JSON for resume, text for cover letter
+  changes         String   @default("[]") // JSON diff entries with accepted flags
+  matchScore      Int?
+  missingKeywords String   @default("[]")
+  updatedAt       DateTime @updatedAt
+
+  @@unique([jobId, kind])
+}
+
+model InterviewQuestion {
+  id       String @id @default(cuid())
+  jobId    String
+  job      Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  category String // track | behavioral
+  question String
+  answer   String @default("")
+  order    Int    @default(0)
+}
